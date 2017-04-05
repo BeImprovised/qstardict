@@ -1,0 +1,8 @@
+{
+    "id": "web",
+    "name": "Web",
+    "version" : "0.1",
+    "description": "An experimental plugin for WEB dictionaries.<br><b><font color=red>Warning:</font></b> now this plugin is unstable",
+    "authors": "Alexander Rodin <rodin.alexander@gmail.com>",
+    "features": "dict"
+}

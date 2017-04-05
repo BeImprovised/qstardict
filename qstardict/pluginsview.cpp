@@ -17,127 +17,102 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.               *
  *****************************************************************************/
 
-
 #include <QHeaderView>
-#include <QStyledItemDelegate>
 #include <QPainter>
+//#include <QStyledItemDelegate>
 
 #include "application.h"
 #include "pluginsview.h"
 
 namespace QStarDict {
 
-class ButtonDelegate : public QStyledItemDelegate
-{
-    Q_OBJECT
-
-    enum ButtonRoles {
-        ButtonRole = Qt::UserRole + 1
-    };
-
-    QModelIndex sunken;
-
-public:
-    explicit ButtonDelegate(QObject *parent = 0) :
-        QStyledItemDelegate(parent)
-    {
-    }
-
-    // painting
-    void paint(QPainter *painter,
-               const QStyleOptionViewItem &option, const QModelIndex &index) const
-    {
-        QStyleOptionViewItemV4 opt = option;
-        initStyleOption(&opt, index);
-        if (opt.icon.isNull()) {
-            return;
-        }
-        painter->save();
-        if (opt.state & QStyle::State_Selected) {
-            painter->setPen(QPen(Qt::NoPen));
-            if (opt.state & QStyle::State_Active) {
-              painter->setBrush(QBrush(QPalette().highlight()));
-            }
-            else {
-              painter->setBrush(QBrush(QPalette().color(QPalette::Inactive,
-                                                        QPalette::Highlight)));
-            }
-            painter->drawRect(opt.rect);
-          }
-
-        QStyleOptionButton buttonOption;
-        buttonOption.icon = opt.icon;
-        buttonOption.iconSize = option.decorationSize;
-        buttonOption.text = opt.text;
-        buttonOption.features = QStyleOptionButton::Flat;
-        buttonOption.rect = opt.rect;
-        buttonOption.state = QStyle::State_Enabled;
-        if (index == sunken) {
-            buttonOption.state |= QStyle::State_Sunken;
-        }
-        if (option.state & QStyle::State_MouseOver) {
-            buttonOption.state |= (QStyle::State_Active | QStyle::State_MouseOver);
-        }
-
-        QApplication::style()->drawControl(QStyle::CE_PushButton,
-                                           &buttonOption,
-                                           painter);
-        painter->restore();
-    }
-
-    bool editorEvent(QEvent *event,
-        QAbstractItemModel *model,
-        const QStyleOptionViewItem &option,
-        const QModelIndex &index)
-    {
-        Q_UNUSED(model);
-        Q_UNUSED(option);
-
-        if(!(event->type() == QEvent::MouseButtonPress ||
-            event->type() == QEvent::MouseButtonRelease)) {
-            return true;
-        }
-
-        sunken = QModelIndex();
-
-        if( event->type() == QEvent::MouseButtonPress) {
-            sunken = index;
-        }
-        return true;
-    }
-};
-
-
-PluginsView::PluginsView(QWidget *parent) :
-    QTableView(parent)
-{
-    verticalHeader()->hide();
-    horizontalHeader()->hide();
-    //setSelectionBehavior(QAbstractItemView::SelectRows);
-    setSelectionMode(QAbstractItemView::NoSelection);
-    setEditTriggers(NoEditTriggers);
-    setShowGrid(false);
+PluginsView::PluginsView(QWidget *parent) : QTableView(parent) {
+  verticalHeader()->hide();
+  horizontalHeader()->hide();
+  // setSelectionBehavior(QAbstractItemView::SelectRows);
+  setSelectionMode(QAbstractItemView::NoSelection);
+  setEditTriggers(NoEditTriggers);
+  setShowGrid(false);
 }
 
-void PluginsView::configureColumns()
-{
-    ButtonDelegate *btnsDelegate = new ButtonDelegate();
-    setItemDelegateForColumn(2, btnsDelegate);
-    setItemDelegateForColumn(3, btnsDelegate);
+void PluginsView::configureColumns() {
+  ButtonDelegate *btnsDelegate = new ButtonDelegate();
+  setItemDelegateForColumn(2, btnsDelegate);
+  setItemDelegateForColumn(3, btnsDelegate);
 
 #if QT_VERSION >= 0x050000
-    horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-    horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+  horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+  horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+  horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+  horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
 #else
-    horizontalHeader()->setResizeMode(0, QHeaderView::Stretch);
-    horizontalHeader()->setResizeMode(1, QHeaderView::ResizeToContents);
-    horizontalHeader()->setResizeMode(2, QHeaderView::ResizeToContents);
-    horizontalHeader()->setResizeMode(3, QHeaderView::ResizeToContents);
+  horizontalHeader()->setResizeMode(0, QHeaderView::Stretch);
+  horizontalHeader()->setResizeMode(1, QHeaderView::ResizeToContents);
+  horizontalHeader()->setResizeMode(2, QHeaderView::ResizeToContents);
+  horizontalHeader()->setResizeMode(3, QHeaderView::ResizeToContents);
 #endif
+}
+
+ButtonDelegate::ButtonDelegate(QObject *parent) : QStyledItemDelegate(parent) {}
+
+void ButtonDelegate::paint(QPainter *painter,
+			   const QStyleOptionViewItem &option,
+			   const QModelIndex &index) const {
+  QStyleOptionViewItem opt = option;
+  initStyleOption(&opt, index);
+  if (opt.icon.isNull()) {
+    return;
+  }
+  painter->save();
+  if (opt.state & QStyle::State_Selected) {
+    painter->setPen(QPen(Qt::NoPen));
+    if (opt.state & QStyle::State_Active) {
+      painter->setBrush(QBrush(QPalette().highlight()));
+    } else {
+      painter->setBrush(
+	  QBrush(QPalette().color(QPalette::Inactive, QPalette::Highlight)));
+    }
+    painter->drawRect(opt.rect);
+  }
+
+  QStyleOptionButton buttonOption;
+  buttonOption.icon = opt.icon;
+  buttonOption.iconSize = option.decorationSize;
+  buttonOption.text = opt.text;
+  buttonOption.features = QStyleOptionButton::Flat;
+  buttonOption.rect = opt.rect;
+  buttonOption.state = QStyle::State_Enabled;
+  if (index == sunken) {
+    buttonOption.state |= QStyle::State_Sunken;
+  }
+  if (option.state & QStyle::State_MouseOver) {
+    buttonOption.state |= (QStyle::State_Active | QStyle::State_MouseOver);
+  }
+
+  QApplication::style()->drawControl(QStyle::CE_PushButton, &buttonOption,
+				     painter);
+  painter->restore();
+}
+
+bool ButtonDelegate::editorEvent(QEvent *event, QAbstractItemModel *model,
+				 const QStyleOptionViewItem &option,
+				 const QModelIndex &index) {
+  Q_UNUSED(model);
+  Q_UNUSED(option);
+
+  if (!(event->type() == QEvent::MouseButtonPress ||
+	event->type() == QEvent::MouseButtonRelease)) {
+    return true;
+  }
+
+  sunken = QModelIndex();
+
+  if (event->type() == QEvent::MouseButtonPress) {
+    sunken = index;
+  }
+  return true;
 }
 
 } // namespace QStarDict
 
-#include "pluginsview.moc"
+//#include "pluginsview.moc"

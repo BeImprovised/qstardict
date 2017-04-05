@@ -17,31 +17,30 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.               *
  *****************************************************************************/
 
-#include <QApplication>
 #include "keyboard.h"
+#include <QApplication>
 
 #ifdef Q_OS_WIN
 
 #include <windows.h>
 #include <winuser.h>
 
-namespace QStarDict
-{
+namespace QStarDict {
 
-Qt::KeyboardModifiers Keyboard::activeModifiers()
-{
-    Qt::KeyboardModifiers result;
+Qt::KeyboardModifiers Keyboard::activeModifiers() {
+  Qt::KeyboardModifiers result;
 
-    if (GetAsyncKeyState(VK_MENU) & 0x8000)
-        result |= Qt::AltModifier;
-    if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
-        result |= Qt::ControlModifier;
-    if (GetAsyncKeyState(VK_SHIFT) & 0x8000)
-        result |= Qt::ShiftModifier;
-    if ((GetAsyncKeyState(VK_LWIN) & 0x8000) || (GetAsyncKeyState(VK_RWIN) & 0x8000))
-        result |= Qt::MetaModifier;
+  if (GetAsyncKeyState(VK_MENU) & 0x8000)
+    result |= Qt::AltModifier;
+  if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
+    result |= Qt::ControlModifier;
+  if (GetAsyncKeyState(VK_SHIFT) & 0x8000)
+    result |= Qt::ShiftModifier;
+  if ((GetAsyncKeyState(VK_LWIN) & 0x8000) ||
+      (GetAsyncKeyState(VK_RWIN) & 0x8000))
+    result |= Qt::MetaModifier;
 
-    return result;
+  return result;
 }
 
 } // namespace
@@ -49,12 +48,10 @@ Qt::KeyboardModifiers Keyboard::activeModifiers()
 #elif defined(Q_OS_MAC)
 #include <QApplication>
 
-namespace QStarDict
-{
+namespace QStarDict {
 
-Qt::KeyboardModifiers Keyboard::activeModifiers()
-{
-    return QApplication::keyboardModifiers();
+Qt::KeyboardModifiers Keyboard::activeModifiers() {
+  return QApplication::keyboardModifiers();
 }
 
 } // namespace
@@ -67,44 +64,41 @@ Qt::KeyboardModifiers Keyboard::activeModifiers()
 #include <X11/XKBlib.h>
 #include <stdio.h>
 
-namespace
-{
-const unsigned mAlt     = 0010;
-const unsigned mCtrl    = 0004;
-const unsigned mShift   = 0001;
-const unsigned mWin     = 0100;
+namespace {
+#if QT_VERSION < 0x040800
+const unsigned mAlt = 0010;
+const unsigned mCtrl = 0004;
+const unsigned mShift = 0001;
+const unsigned mWin = 0100;
+#endif
 }
 
-namespace QStarDict
-{
+namespace QStarDict {
 
-Qt::KeyboardModifiers Keyboard::activeModifiers()
-{
+Qt::KeyboardModifiers Keyboard::activeModifiers() {
 #if QT_VERSION < 0x040800
-    Qt::KeyboardModifiers result;
-    XkbStateRec state;
+  Qt::KeyboardModifiers result;
+  XkbStateRec state;
 
-    XkbGetState(QX11Info::display(), XkbUseCoreKbd, &state);
-    if (state.base_mods & mAlt)
-        result |= Qt::AltModifier;
-    if (state.base_mods & mCtrl)
-        result |= Qt::ControlModifier;
-    if (state.base_mods & mShift)
-        result |= Qt::ShiftModifier;
-    if (state.base_mods & mWin)
-        result |= Qt::MetaModifier;
+  XkbGetState(QX11Info::display(), XkbUseCoreKbd, &state);
+  if (state.base_mods & mAlt)
+    result |= Qt::AltModifier;
+  if (state.base_mods & mCtrl)
+    result |= Qt::ControlModifier;
+  if (state.base_mods & mShift)
+    result |= Qt::ShiftModifier;
+  if (state.base_mods & mWin)
+    result |= Qt::MetaModifier;
 
-    return result;
+  return result;
 #else
-    return QApplication::queryKeyboardModifiers();
+  return QApplication::queryKeyboardModifiers();
 #endif
 }
 
 } // namespace
 
-
-
 #endif // Q_WS_MAC
 
-// vim: tabstop=4 softtabstop=4 shiftwidth=4 expandtab cindent textwidth=120 formatoptions=tc
-
+// vim: tabstop=4 softtabstop=4 shiftwidth=4 expandtab cindent textwidth=120
+// formatoptions=tc
