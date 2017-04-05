@@ -2,6 +2,7 @@ qstardict/qstardict
 qstardict/translations/*.qm
 *.o
 *.so
+moc_*.h
 moc_*.cpp
 qrc_*.cpp
 ui_*.h
@@ -11,3 +12,5 @@ CMakeLists.txt.user
 *.pro.user
 build-kdeplasma-*
 build-*
+*.moc
+*.json

@@ -1,8 +1,0 @@
-{
-	"id": "stardict",
-	"name": "StarDict",
-	"version" : "1.0",
-	"description": "The StarDict plugin",
-	"authors": "Hu Zheng <huzheng_001@163.com>;Opera Wang <wangvisual@sohu.com>;Alexander Rodin <rodin.alexander@gmail.com>",
-	"features": "dict;defenable"
-}
