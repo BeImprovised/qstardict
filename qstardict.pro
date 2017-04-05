@@ -67,3 +67,4 @@ docs.files = $$DOCS
 docs.path = $$DOCS_DIR
 INSTALLS += docs
 
+DEFINES += "OUT_PUT=$$OUT_PWD"

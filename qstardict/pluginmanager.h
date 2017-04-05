@@ -1,118 +1,164 @@
 #ifndef PLUGINMANAGER_H
 #define PLUGINMANAGER_H
 
-#include <QObject>
 #include <QDateTime>
-#include <QSharedPointer>
 #include <QLibrary>
+#include <QObject>
 #include <QPluginLoader>
+#include <QSharedPointer>
 
 #include "../plugins/baseplugin.h"
+//#include "appinfo.h"
 
 namespace QStarDict {
 
 class PluginServerImpl;
+class PluginManager;
+class PluginServerImpl : public QObject, public PluginServer {
+  Q_OBJECT
+  Q_INTERFACES(QStarDict::PluginServer)
 
-class PluginManager : public QObject
-{
-    Q_OBJECT
+  PluginManager *pm;
+
 public:
+  PluginServerImpl(PluginManager *parent);
 
-    enum LoadError {
-        LE_NoError = 0,
-        LE_NotPlugin,
-        LE_Abi,
-        LE_Metadata,
+  const PluginMetadata &metadata(const QString &pluginId) const;
+
+  /**
+   * Return a directory that contains plugin's data.
+   */
+  QString configDir(const QString &pluginId) const;
+
+  QString idForPlugin(QObject *instance) const;
+};
+
+class PluginsIterator {
+  QDir currentDir;
+  QStringList pluginsDirs;
+  QStringList plugins;
+  QStringList::const_iterator pluginsDirsIt;
+  QStringList::const_iterator pluginsIt;
+
+public:
+  PluginsIterator();
+
+  void next();
+
+  inline bool isFinished() const;
+
+  inline QString fileName() const;
+
+private:
+  void findDirWithPlugins();
+};
+
+class PluginManager : public QObject {
+  Q_OBJECT
+public:
+  enum LoadError {
+    LE_NoError = 0,
+    LE_NotPlugin,
+    LE_Abi,
+    LE_Metadata,
+  };
+
+  enum PluginFeature {
+    FirstFeature = 0x1,
+    RegularPlugin = FirstFeature,
+    DEIntegration = 0x2,
+    TrayIcon = 0x4,
+    GlobalShortcuts = 0x8,
+    Notifications = 010,
+    LastFeature = 020
+  };
+  Q_DECLARE_FLAGS(PluginFeatures, PluginFeature)
+
+  class Plugin {
+  public:
+    typedef QSharedPointer<Plugin> Ptr;
+
+    enum State : quint8 {
+      Exist = 1, /* used during plugins search */
+      Valid = 2,
+      Enabled = 4
     };
 
-    enum PluginFeature {
-        FirstFeature     = 0x1,
-        RegularPlugin   = FirstFeature,
-        DEIntegration   = 0x2,
-        TrayIcon        = 0x4,
-        GlobalShortcuts = 0x8,
-        Notifications   = 010,
-        LastFeature  = 020
-    };
-    Q_DECLARE_FLAGS(PluginFeatures, PluginFeature)
+    Plugin() : loader(0), pluginServer(0), state(0) {}
+    QPluginLoader *loader;
+    PluginServerImpl *pluginServer;
+    uint state;
+    QDateTime modifyTime; // modification time of plugin library (outdated
+			  // metadata check)
+    PluginMetadata metadata;
 
-    class Plugin
-    {
-    public:
-        typedef QSharedPointer<Plugin> Ptr;
-
-        enum State : quint8 {
-            Exist = 1, /* used during plugins search */
-            Valid = 2,
-            Enabled = 4
-        };
-
-        Plugin() : loader(0), pluginServer(0), state(0) {}
-        QPluginLoader  *loader;
-        PluginServerImpl *pluginServer;
-        uint            state;
-        QDateTime      modifyTime; // modification time of plugin library (outdated metadata check)
-        PluginMetadata metadata;
-
-        inline bool isEnabled() const { return state & Enabled; }
-        inline void setEnabled(bool enabled) {
-            if (enabled) state |= Enabled;
-            else state &= ~Enabled;
-        }
-        inline bool isLoaded() const { return loader? loader->isLoaded() : false; }
-        LoadError load();
-        bool unload();
-        void cacheIcon();
-
-        template<class T>
-        inline T* castInstance() {
-            QObject *o = isLoaded()? loader->instance() : 0;
-            return o? qobject_cast<T*>(o) : 0;
-        }
-    };
-
-    explicit PluginManager();
-    ~PluginManager();
-
-    inline QObject *plugin(const QString &pluginId) const {
-        auto pd = plugins.value(pluginId);
-        return (pd && pd->isLoaded())? pd->loader->instance() : 0;
+    inline bool isEnabled() const { return state & Enabled; }
+    inline void setEnabled(bool enabled) {
+      if (enabled)
+	state |= Enabled;
+      else
+	state &= ~Enabled;
     }
+    inline bool isLoaded() const { return loader ? loader->isLoaded() : false; }
+    LoadError load();
+    bool unload();
+    void cacheIcon();
 
-    template<class T>
-    inline T *plugin(const QString &pluginId) const { // invalid pluginId could come from DictCore. so check it first
-        auto pd = plugins.value(pluginId);
-        return (pd && pd->isLoaded())? pd->castInstance<T>() : 0;
+    template <class T> inline T *castInstance() {
+      QObject *o = isLoaded() ? loader->instance() : 0;
+      return o ? qobject_cast<T *>(o) : 0;
     }
+  };
 
-    void loadPlugins();
-    inline bool isEnabled(const QString &pluginId) const { auto pd = plugins.value(pluginId); return pd? pd->isEnabled() : false; }
-    inline bool isLoaded(const QString &pluginId) const { auto pd = plugins.value(pluginId); return pd? pd->isLoaded() : false; }
-    void setEnabled(const QString &pluginId, bool enabled);
-    inline int pluginsCount() const { return plugins.size(); }
+  explicit PluginManager();
+  ~PluginManager();
 
-    QStringList availablePlugins() const;
-    QStringList loadedPlugins() const;
-    void setLoadedPlugins(const QStringList &pluginIds);
+  inline QObject *plugin(const QString &pluginId) const {
+    auto pd = plugins.value(pluginId);
+    return (pd && pd->isLoaded()) ? pd->loader->instance() : 0;
+  }
 
-    Plugin::Ptr pluginDesc(const QString &pluginId) const { return plugins.value(pluginId); }
-    Plugin::Ptr findPluginInstance(QObject *instance) const;
+  template <class T>
+  inline T *plugin(const QString &pluginId)
+      const { // invalid pluginId could come from DictCore. so check it first
+    auto pd = plugins.value(pluginId);
+    return (pd && pd->isLoaded()) ? pd->castInstance<T>() : 0;
+  }
+
+  void loadPlugins();
+  inline bool isEnabled(const QString &pluginId) const {
+    auto pd = plugins.value(pluginId);
+    return pd ? pd->isEnabled() : false;
+  }
+  inline bool isLoaded(const QString &pluginId) const {
+    auto pd = plugins.value(pluginId);
+    return pd ? pd->isLoaded() : false;
+  }
+  void setEnabled(const QString &pluginId, bool enabled);
+  inline int pluginsCount() const { return plugins.size(); }
+
+  QStringList availablePlugins() const;
+  QStringList loadedPlugins() const;
+  void setLoadedPlugins(const QStringList &pluginIds);
+
+  Plugin::Ptr pluginDesc(const QString &pluginId) const {
+    return plugins.value(pluginId);
+  }
+  Plugin::Ptr findPluginInstance(QObject *instance) const;
 
 signals:
-    void pluginLoaded(const QString &);
+  void pluginLoaded(const QString &);
 
 public slots:
 
 private:
-    LoadError lastError;
-    PluginServerImpl *pluginServer;
-    QHash<QString, Plugin::Ptr> plugins;
+  LoadError lastError;
+  PluginServerImpl *pluginServer;
+  QHash<QString, Plugin::Ptr> plugins;
 
-    void updateMetadata();
-    static QString iconsCacheDir();
+  void updateMetadata();
+  static QString iconsCacheDir();
 };
-
 }
-
 
 #endif // PLUGINMANAGER_H

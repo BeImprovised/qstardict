@@ -85,424 +85,405 @@ Business rules:
    on load, since we can load a plugin just to update metadata.
 */
 
-#include <QSettings>
-#include <QStringList>
+#include <QApplication>
 #include <QDir>
 #include <QPluginLoader>
 #include <QSet>
-#include <QApplication>
-#if QT_VERSION >= QT_VERSION_CHECK(5,0,0)
-# include <QJsonArray>
+#include <QSettings>
+#include <QStringList>
+#if QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
+#include <QJsonArray>
 #endif
 #include <QDebug>
 
+#include "../plugins/pluginserver.h"
 #include "appinfo.h"
 #include "pluginmanager.h"
-#include "../plugins/pluginserver.h"
 
 namespace QStarDict {
 
-class PluginServerImpl : public QObject, public PluginServer
-{
-    Q_OBJECT
-    Q_INTERFACES(QStarDict::PluginServer)
-
-    PluginManager *pm;
-public:
-    PluginServerImpl(PluginManager *parent) :
-        QObject(parent),
-        pm(parent)
-    {
-
-    }
-
-    const PluginMetadata &metadata(const QString &pluginId) const
-    {
-        return pm->pluginDesc(pluginId)->metadata;
-    }
-
-    /**
-     * Return a directory that contains plugin's data.
-     */
-    QString configDir(const QString &pluginId) const
-    {
-        QString path = AppInfo::configDir() + QLatin1String("/pluginsdata/") + metadata(pluginId).name;
-
-        if (! QDir::root().exists(path))
-            QDir::root().mkpath(path);
-        return path;
-    }
-
-    QString idForPlugin(QObject *instance) const
-    {
-        auto data = pm->findPluginInstance(instance);
-        if (data) {
-            return data->metadata.id;
-        }
-        return QString();
-    }
-};
-
-class PluginsIterator
-{
-    QDir currentDir;
-    QStringList pluginsDirs;
-    QStringList plugins;
-    QStringList::const_iterator pluginsDirsIt;
-    QStringList::const_iterator pluginsIt;
-
-public:
-    PluginsIterator()
-    {
-        pluginsDirs = AppInfo::appPluginsDirs();
-        pluginsDirsIt = pluginsDirs.constBegin();
-        findDirWithPlugins();
-    }
-
-    void next()
-    {
-        if (pluginsIt != plugins.constEnd()) {
-            pluginsIt++;
-        }
-        if (pluginsIt == plugins.constEnd() && pluginsDirsIt != pluginsDirs.constEnd()) {
-            pluginsDirsIt++;
-            findDirWithPlugins();
-        }
-    }
-
-    inline bool isFinished() const { return pluginsIt == plugins.constEnd() &&
-                pluginsDirsIt == pluginsDirs.constEnd(); }
-
-    inline QString fileName() const
-    {
-        if (pluginsIt != plugins.constEnd()) {
-            return QFileInfo(currentDir.filePath(*pluginsIt)).canonicalFilePath();
-        }
-        return QString();
-    }
-
-private:
-    void findDirWithPlugins()
-    {
-        while (pluginsDirsIt != pluginsDirs.constEnd()) {
-            currentDir = QDir(*pluginsDirsIt);
-            if (currentDir.isReadable()) {
-                plugins.clear();
-                foreach(const QString &file, currentDir.entryList(QDir::Files, QDir::Time)) {
-                    if (QLibrary::isLibrary(file)) {
-                        plugins.append(file);
-                    }
-                }
-                if (!plugins.isEmpty()) {
-                    pluginsIt = plugins.constBegin();
-                    return;
-                }
-            }
-            pluginsDirsIt++;
-        }
-        pluginsIt = plugins.constEnd();
-    }
-};
-
-PluginManager::PluginManager()
-{
-    pluginServer = new PluginServerImpl(this);
-    QDir(iconsCacheDir()).mkpath(QLatin1String("."));
-    updateMetadata();
+PluginManager::PluginManager() {
+  pluginServer = new PluginServerImpl(this);
+  QDir(iconsCacheDir()).mkpath(QLatin1String("."));
+  updateMetadata();
 }
 
-PluginManager::~PluginManager()
-{
-    /*
-    QHashIterator<QString, Plugin::Ptr> it(plugins);
-    while (it.hasNext()) {
-        auto item = it.next();
-        if (item.value()->isLoaded()) {
-            item.value()->unload();
-        }
-    }
-    */
+PluginManager::~PluginManager() {
+  /*
+  QHashIterator<QString, Plugin::Ptr> it(plugins);
+  while (it.hasNext()) {
+      auto item = it.next();
+      if (item.value()->isLoaded()) {
+	  item.value()->unload();
+      }
+  }
+  */
 }
 
-void PluginManager::loadPlugins()
-{
-    QSettings s;
-    QStringList prioritizedList = s.value("plugins-priority").toStringList();
-    QMutableStringListIterator it(prioritizedList);
-    while (it.hasNext()) {
-        QString id = it.next();
-        if (id.isEmpty() || !plugins.contains(id)) {
-            it.remove();
-        }
+void PluginManager::loadPlugins() {
+  QSettings s;
+  QStringList prioritizedList = s.value("plugins-priority").toStringList();
+  QMutableStringListIterator it(prioritizedList);
+  while (it.hasNext()) {
+    QString id = it.next();
+    if (id.isEmpty() || !plugins.contains(id)) {
+      it.remove();
     }
-    // now prioritizedList comprises only known plugin
+  }
+  // now prioritizedList comprises only known plugin
 
-    // and any not previously prioritized
-    prioritizedList += (plugins.keys().toSet() - prioritizedList.toSet()).toList();
-    s.setValue("plugins-priority", prioritizedList);
+  // and any not previously prioritized
+  prioritizedList +=
+      (plugins.keys().toSet() - prioritizedList.toSet()).toList();
+  s.setValue("plugins-priority", prioritizedList);
 
-    /*
-     * now we have fully prioritized list.
-     */
-    QStringListIterator it2(prioritizedList);
-    while (it2.hasNext()) {
-        Plugin::Ptr pd = plugins[it2.next()];
+  /*
+   * now we have fully prioritized list.
+   */
+  QStringListIterator it2(prioritizedList);
+  while (it2.hasNext()) {
+    Plugin::Ptr pd = plugins[it2.next()];
 
-        if (!pd->isEnabled() || pd->isLoaded()) {
-            continue;
-        }
-
-        pd->load();
+    if (!pd->isEnabled() || pd->isLoaded()) {
+      continue;
     }
+
+    pd->load();
+  }
 }
 
-QString PluginManager::iconsCacheDir()
-{
-    return AppInfo::cacheDir() + QLatin1String("/plugin-icons");
+QString PluginManager::iconsCacheDir() {
+  return AppInfo::cacheDir() + QLatin1String("/plugin-icons");
 }
 
-void PluginManager::setEnabled(const QString &pluginId, bool enabled)
-{
-    QSettings s;
-    auto pd = plugins.value(pluginId);
-    if (!pd) {
-        return;
-    }
-    pd->setEnabled(enabled);
-    s.beginGroup("plugins");
-    s.beginGroup(pluginId);
-    s.setValue("state", (int)pd->state);
+void PluginManager::setEnabled(const QString &pluginId, bool enabled) {
+  QSettings s;
+  auto pd = plugins.value(pluginId);
+  if (!pd) {
+    return;
+  }
+  pd->setEnabled(enabled);
+  s.beginGroup("plugins");
+  s.beginGroup(pluginId);
+  s.setValue("state", (int)pd->state);
 
-    if (enabled) {
-        if (!pd->isLoaded()) {
-            if (pd->load() != LE_NoError) {
-                emit pluginLoaded(pd->metadata.id);
-            }
-        }
-    } else if (pd->isLoaded()) {
-        if (!pd->unload()) {
-            qWarning("Failed to unload %s: %s", qPrintable(pd->loader->fileName()), qPrintable(pd->loader->errorString()));
-        }
+  if (enabled) {
+    if (!pd->isLoaded()) {
+      if (pd->load() != LE_NoError) {
+	emit pluginLoaded(pd->metadata.id);
+      }
     }
+  } else if (pd->isLoaded()) {
+    if (!pd->unload()) {
+      qWarning("Failed to unload %s: %s", qPrintable(pd->loader->fileName()),
+	       qPrintable(pd->loader->errorString()));
+    }
+  }
 }
 
-QStringList PluginManager::availablePlugins() const
-{
-    return QSettings().value("plugins-priority").toStringList();
+QStringList PluginManager::availablePlugins() const {
+  return QSettings().value("plugins-priority").toStringList();
 }
 
-QStringList PluginManager::loadedPlugins() const
-{
-    QStringList ret;
+QStringList PluginManager::loadedPlugins() const {
+  QStringList ret;
 
-    foreach (const QString &pluginId, plugins.keys()) {
-        auto ptr = plugins.value(pluginId);
-        if (ptr->isLoaded()) {
-            ret.append(pluginId);
-        }
+  foreach (const QString &pluginId, plugins.keys()) {
+    auto ptr = plugins.value(pluginId);
+    if (ptr->isLoaded()) {
+      ret.append(pluginId);
     }
+  }
 
-    return ret;
+  return ret;
 }
 
-void PluginManager::setLoadedPlugins(const QStringList &pluginIds)
-{
-    QSet<QString> ps = QSet<QString>::fromList(pluginIds);
-    QMutableHashIterator<QString, Plugin::Ptr> i(plugins);
+void PluginManager::setLoadedPlugins(const QStringList &pluginIds) {
+  QSet<QString> ps = QSet<QString>::fromList(pluginIds);
+  QMutableHashIterator<QString, Plugin::Ptr> i(plugins);
 
-    while(i.hasNext()) {
-        auto p = i.next();
-        setEnabled(p.key(), ps.contains(p.key()));
-    }
+  while (i.hasNext()) {
+    auto p = i.next();
+    setEnabled(p.key(), ps.contains(p.key()));
+  }
 }
 
-PluginManager::Plugin::Ptr PluginManager::findPluginInstance(QObject *instance) const
-{
-    foreach (const QString &pluginId, plugins.keys()) {
-        auto ptr = plugins.value(pluginId);
-        if (ptr->isLoaded() && ptr->loader->instance() == instance) {
-            return ptr;
-        }
+PluginManager::Plugin::Ptr
+PluginManager::findPluginInstance(QObject *instance) const {
+  foreach (const QString &pluginId, plugins.keys()) {
+    auto ptr = plugins.value(pluginId);
+    if (ptr->isLoaded() && ptr->loader->instance() == instance) {
+      return ptr;
     }
-    return PluginManager::Plugin::Ptr();
+  }
+  return PluginManager::Plugin::Ptr();
 }
 
-void PluginManager::updateMetadata()
-{
-    QSettings s;
-    QSettings metaCache(AppInfo::cacheDir() + QLatin1String("/pluginsmeta.ini"), QSettings::IniFormat);
-    //decltype(plugins) tmpPlugins;
-    QHash<QString, Plugin::Ptr> file2data;
+void PluginManager::updateMetadata() {
+  QSettings s;
+  QSettings metaCache(AppInfo::cacheDir() + QLatin1String("/pluginsmeta.ini"),
+		      QSettings::IniFormat);
+  // decltype(plugins) tmpPlugins;
+  QHash<QString, Plugin::Ptr> file2data;
 
-    // read metadata cache
-    int size = metaCache.beginReadArray("list");
-    for (int i = 0; i < size; ++i) {
-        metaCache.setArrayIndex(i);
-        QString fileName = metaCache.value("filename", QString()).toString();
-        if (fileName.isEmpty()) {
-            break;
-        }
-        Plugin::Ptr pd(new Plugin);
-        //tmpPlugins[pluginId] = pd;
-        file2data[fileName] = pd;
-        pd->state = metaCache.value("state").toUInt();
-        pd->state &= ~Plugin::Exist; // reset it until we sure it exists
-        pd->modifyTime = QDateTime::fromTime_t(metaCache.value("lastModify").toUInt()); // if 0 then we have staled cache. it's ok
-        pd->metadata.id = metaCache.value("id").toString();
-        pd->metadata.name = metaCache.value("name").toString();
-        pd->metadata.description = metaCache.value("description").toString();
-        pd->metadata.authors = metaCache.value("authors").toStringList();
-        pd->metadata.features = metaCache.value("features").toStringList();
-        pd->metadata.version = metaCache.value("version").toUInt();
-        pd->metadata.extra = metaCache.value("extra").toMap();
-        pd->metadata.icon = QIcon(iconsCacheDir() + '/' + pd->metadata.id + QLatin1String(".png"));
-        //pd->metadata.extra = s.value("extra").();
+  // read metadata cache
+  int size = metaCache.beginReadArray("list");
+  for (int i = 0; i < size; ++i) {
+    metaCache.setArrayIndex(i);
+    QString fileName = metaCache.value("filename", QString()).toString();
+    if (fileName.isEmpty()) {
+      break;
     }
-    metaCache.endArray();
+    Plugin::Ptr pd(new Plugin);
+    // tmpPlugins[pluginId] = pd;
+    file2data[fileName] = pd;
+    pd->state = metaCache.value("state").toUInt();
+    pd->state &= ~Plugin::Exist; // reset it until we sure it exists
+    pd->modifyTime = QDateTime::fromTime_t(
+	metaCache.value("lastModify")
+	    .toUInt()); // if 0 then we have staled cache. it's ok
+    pd->metadata.id = metaCache.value("id").toString();
+    pd->metadata.name = metaCache.value("name").toString();
+    pd->metadata.description = metaCache.value("description").toString();
+    pd->metadata.authors = metaCache.value("authors").toStringList();
+    pd->metadata.features = metaCache.value("features").toStringList();
+    pd->metadata.version = metaCache.value("version").toUInt();
+    pd->metadata.extra = metaCache.value("extra").toMap();
+    pd->metadata.icon =
+	QIcon(iconsCacheDir() + '/' + pd->metadata.id + QLatin1String(".png"));
+    // pd->metadata.extra = s.value("extra").();
+  }
+  metaCache.endArray();
 
-    lastError = LE_NoError;
-    metaCache.beginWriteArray("list");
-    int cacheIndex = 0;
-    PluginsIterator it;
-    while (!it.isFinished()) {
-        metaCache.setArrayIndex(cacheIndex);
-        QString fileName = it.fileName();
-        it.next();
-        Plugin::Ptr pd = file2data.value(fileName);
-        bool isnew = pd.isNull();
-        if (isnew) {
-            pd = Plugin::Ptr(new Plugin);
-            pd->state |= Plugin::Exist;
-        }
-        pd->pluginServer = pluginServer;
-        pd->loader = new QPluginLoader(fileName);
+  lastError = LE_NoError;
+  metaCache.beginWriteArray("list");
+  int cacheIndex = 0;
+  PluginsIterator it;
+  while (!it.isFinished()) {
+    metaCache.setArrayIndex(cacheIndex);
+    QString fileName = it.fileName();
+    it.next();
+    Plugin::Ptr pd = file2data.value(fileName);
+    bool isnew = pd.isNull();
+    if (isnew) {
+      pd = Plugin::Ptr(new Plugin);
+      pd->state |= Plugin::Exist;
+    }
+    pd->pluginServer = pluginServer;
+    pd->loader = new QPluginLoader(fileName);
 
-        if (isnew || (!pd->isLoaded() &&
-                            pd->modifyTime != QFileInfo(pd->loader->fileName()).lastModified())) { // have to update metadata cache
+    if (isnew || (!pd->isLoaded() &&
+		  pd->modifyTime !=
+		      QFileInfo(pd->loader->fileName())
+			  .lastModified())) { // have to update metadata cache
 
-            pd->modifyTime = QFileInfo(fileName).lastModified();
-#if QT_VERSION < QT_VERSION_CHECK(5,0,0)
-            lastError = pd->load();
-            if (lastError != LE_NoError) { // new cache
-                pd->state &= ~(Plugin::Valid | Plugin::Enabled);
-                continue; // we were unable to do anything with this "plugin"
-            }
+      pd->modifyTime = QFileInfo(fileName).lastModified();
+#if QT_VERSION < QT_VERSION_CHECK(5, 0, 0)
+      lastError = pd->load();
+      if (lastError != LE_NoError) { // new cache
+	pd->state &= ~(Plugin::Valid | Plugin::Enabled);
+	continue; // we were unable to do anything with this "plugin"
+      }
 
-            auto qnp = pd->castInstance<BasePlugin>();
-            PluginMetadata md = qnp->metadata(); // FIXME it's qt4 only
-            if (md.id.isEmpty() || md.name.isEmpty()) {
-                pd->unload();
-                qDebug("QStarDict plugin %s did not set metadata id or name. ignore it", qPrintable(fileName));
-                lastError = LE_Metadata;
-                pd->state &= ~(Plugin::Valid | Plugin::Enabled); // mark invalid and disable
-                continue;
-            }
+      auto qnp = pd->castInstance<BasePlugin>();
+      PluginMetadata md = qnp->metadata(); // FIXME it's qt4 only
+      if (md.id.isEmpty() || md.name.isEmpty()) {
+	pd->unload();
+	qDebug("QStarDict plugin %s did not set metadata id or name. ignore it",
+	       qPrintable(fileName));
+	lastError = LE_Metadata;
+	pd->state &=
+	    ~(Plugin::Valid | Plugin::Enabled); // mark invalid and disable
+	continue;
+      }
 
-            pd->metadata = md;
-            pd->cacheIcon();
+      pd->metadata = md;
+      pd->cacheIcon();
 #else
-            auto js = pd->loader->metaData().value(QLatin1String("MetaData")).toObject();
-            QString id = js.value(QLatin1String("id")).toString();
-            QString name = js.value(QLatin1String("name")).toString();
-            if (id.isEmpty() || name.isEmpty()) {
-                pd->unload();
-                qDebug("QStarDict plugin %s did not set metadata id or name. ignore it", qPrintable(fileName));
-                lastError = LE_Metadata;
-                pd->state &= ~(Plugin::Valid | Plugin::Enabled); // mark invalid and disable
-                continue;
-            }
+      auto js =
+	  pd->loader->metaData().value(QLatin1String("MetaData")).toObject();
+      QString id = js.value(QLatin1String("id")).toString();
+      QString name = js.value(QLatin1String("name")).toString();
+      if (id.isEmpty() || name.isEmpty()) {
+	pd->unload();
+	qDebug("QStarDict plugin %s did not set metadata id or name. ignore it",
+	       qPrintable(fileName));
+	lastError = LE_Metadata;
+	pd->state &=
+	    ~(Plugin::Valid | Plugin::Enabled); // mark invalid and disable
+	continue;
+      }
 
-            pd->metadata.id = id;
-            pd->metadata.name = name;
-            pd->metadata.description = js.value(QLatin1String("description")).toString();
-            pd->metadata.authors = js.value(QLatin1String("authors")).toString().split(';');
-            pd->metadata.features = js.value(QLatin1String("features")).toString().split(';');
-            pd->metadata.version = js.value(QLatin1String("version")).toString();
-            // extra?
+      pd->metadata.id = id;
+      pd->metadata.name = name;
+      pd->metadata.description =
+	  js.value(QLatin1String("description")).toString();
+      pd->metadata.authors =
+	  js.value(QLatin1String("authors")).toString().split(';');
+      pd->metadata.features =
+	  js.value(QLatin1String("features")).toString().split(';');
+      pd->metadata.version = js.value(QLatin1String("version")).toString();
+// extra?
 
 #endif
-            if (isnew) {
-                pd->setEnabled(pd->metadata.features.contains("defenable"));
-            }
+      if (isnew) {
+	pd->setEnabled(pd->metadata.features.contains("defenable"));
+      }
 
-#if QT_VERSION < QT_VERSION_CHECK(5,0,0)
-            if (!pd->isEnabled()) {
-                pd->unload();
-            }
+#if QT_VERSION < QT_VERSION_CHECK(5, 0, 0)
+      if (!pd->isEnabled()) {
+	pd->unload();
+      }
 #endif
 
-            pd->state |= Plugin::Valid;
+      pd->state |= Plugin::Valid;
 
-            metaCache.setValue("id", pd->metadata.id);
-            metaCache.setValue("state", (int)pd->state);
-            metaCache.setValue("filename", pd->loader->fileName());
-            metaCache.setValue("lastModify", pd->modifyTime.toTime_t());
-            metaCache.setValue("name", pd->metadata.name);
-            metaCache.setValue("description", pd->metadata.description);
-            metaCache.setValue("authors", pd->metadata.authors);
-            metaCache.setValue("features", pd->metadata.features);
-            metaCache.setValue("version", pd->metadata.version);
-            metaCache.setValue("extra", pd->metadata.extra);
-            cacheIndex++;
-        }
-
-        plugins.insert(pd->metadata.id, pd);
+      metaCache.setValue("id", pd->metadata.id);
+      metaCache.setValue("state", (int)pd->state);
+      metaCache.setValue("filename", pd->loader->fileName());
+      metaCache.setValue("lastModify", pd->modifyTime.toTime_t());
+      metaCache.setValue("name", pd->metadata.name);
+      metaCache.setValue("description", pd->metadata.description);
+      metaCache.setValue("authors", pd->metadata.authors);
+      metaCache.setValue("features", pd->metadata.features);
+      metaCache.setValue("version", pd->metadata.version);
+      metaCache.setValue("extra", pd->metadata.extra);
+      cacheIndex++;
     }
-    metaCache.endArray();
+
+    plugins.insert(pd->metadata.id, pd);
+  }
+  metaCache.endArray();
 }
 
-void PluginManager::Plugin::cacheIcon()
-{
-    if (!metadata.icon.isNull()) {
-        QFileInfo fi(PluginManager::iconsCacheDir() + '/' + metadata.id + QLatin1String(".png"));
-        if (!fi.exists() || fi.lastModified() < modifyTime) {
-            metadata.icon.pixmap(16, 16).save(fi.filePath());
-        }
+void PluginManager::Plugin::cacheIcon() {
+  if (!metadata.icon.isNull()) {
+    QFileInfo fi(PluginManager::iconsCacheDir() + '/' + metadata.id +
+		 QLatin1String(".png"));
+    if (!fi.exists() || fi.lastModified() < modifyTime) {
+      metadata.icon.pixmap(16, 16).save(fi.filePath());
     }
+  }
 }
 
-PluginManager::LoadError PluginManager::Plugin::load()
-{
-    if (isLoaded()) {
-        return LE_NoError;
-    }
-#ifdef DEVEL
-    qDebug("Loading plugin: %s", qPrintable(loader->fileName()));
-#endif
-    QObject *plugin = loader->instance();
-    if (!plugin) {
-        qDebug("failed to load %s : %s", qPrintable(loader->fileName()), qPrintable(loader->errorString()));
-        return LE_NotPlugin;
-    }
-    BasePlugin *qnp = qobject_cast<BasePlugin *>(plugin);
-    if (!qnp) {
-        loader->unload();
-        qDebug("not QStarDict plugin %s. ignore it", qPrintable(loader->fileName()));
-        return LE_Abi;
-    }
-    qnp->qsd = pluginServer;
-#if QT_VERSION >= QT_VERSION_CHECK(5,0,0)
-    metadata.icon = qnp->pluginIcon();
-    cacheIcon();
-#endif
-
+PluginManager::LoadError PluginManager::Plugin::load() {
+  if (isLoaded()) {
     return LE_NoError;
+  }
+#ifdef DEVEL
+  qDebug("Loading plugin: %s", qPrintable(loader->fileName()));
+#endif
+  QObject *plugin = loader->instance();
+  if (!plugin) {
+    qDebug("failed to load %s : %s", qPrintable(loader->fileName()),
+	   qPrintable(loader->errorString()));
+    return LE_NotPlugin;
+  }
+  BasePlugin *qnp = qobject_cast<BasePlugin *>(plugin);
+  if (!qnp) {
+    loader->unload();
+    qDebug("not QStarDict plugin %s. ignore it",
+	   qPrintable(loader->fileName()));
+    return LE_Abi;
+  }
+  qnp->qsd = pluginServer;
+#if QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
+  metadata.icon = qnp->pluginIcon();
+  cacheIcon();
+#endif
+
+  return LE_NoError;
 }
 
-bool PluginManager::Plugin::unload()
-{
-    QString fileName = loader->fileName();
-    if (loader->unload()) {
-        delete loader;
-        // probably Qt bug but "instance" method does't work after unload. So recreate loader.
-        loader = new QPluginLoader(fileName);
-        return true;
-    }
+bool PluginManager::Plugin::unload() {
+  QString fileName = loader->fileName();
+  if (loader->unload()) {
+    delete loader;
+    // probably Qt bug but "instance" method does't work after unload. So
+    // recreate loader.
+    loader = new QPluginLoader(fileName);
+    return true;
+  }
 
-    qWarning("Failed to unload plugin: %s", qPrintable(metadata.name));
-    return false;
+  qWarning("Failed to unload plugin: %s", qPrintable(metadata.name));
+  return false;
+}
+
+PluginServerImpl::PluginServerImpl(PluginManager *parent)
+    : QObject(parent), pm(parent) {}
+
+const PluginMetadata &
+PluginServerImpl::metadata(const QString &pluginId) const {
+  return pm->pluginDesc(pluginId)->metadata;
+}
+
+QString PluginServerImpl::configDir(const QString &pluginId) const {
+  QString path = AppInfo::configDir() + QLatin1String("/pluginsdata/") +
+		 metadata(pluginId).name;
+
+  if (!QDir::root().exists(path))
+    QDir::root().mkpath(path);
+  return path;
+}
+
+QString PluginServerImpl::idForPlugin(QObject *instance) const {
+  auto data = pm->findPluginInstance(instance);
+  if (data) {
+    return data->metadata.id;
+  }
+  return QString();
+}
+
+PluginsIterator::PluginsIterator() {
+  pluginsDirs = AppInfo::appPluginsDirs();
+  pluginsDirsIt = pluginsDirs.constBegin();
+  findDirWithPlugins();
+}
+
+void PluginsIterator::next() {
+  if (pluginsIt != plugins.constEnd()) {
+    pluginsIt++;
+  }
+  if (pluginsIt == plugins.constEnd() &&
+      pluginsDirsIt != pluginsDirs.constEnd()) {
+    pluginsDirsIt++;
+    findDirWithPlugins();
+  }
+}
+
+bool PluginsIterator::isFinished() const {
+  return pluginsIt == plugins.constEnd() &&
+	 pluginsDirsIt == pluginsDirs.constEnd();
+}
+
+QString PluginsIterator::fileName() const {
+  if (pluginsIt != plugins.constEnd()) {
+    return QFileInfo(currentDir.filePath(*pluginsIt)).canonicalFilePath();
+  }
+  return QString();
+}
+
+void PluginsIterator::findDirWithPlugins() {
+  while (pluginsDirsIt != pluginsDirs.constEnd()) {
+    currentDir = QDir(*pluginsDirsIt);
+    if (currentDir.isReadable()) {
+      plugins.clear();
+      foreach (const QString &file,
+	       currentDir.entryList(QDir::Files, QDir::Time)) {
+	if (QLibrary::isLibrary(file)) {
+	  plugins.append(file);
+	}
+      }
+      if (!plugins.isEmpty()) {
+	pluginsIt = plugins.constBegin();
+	return;
+      }
+    }
+    pluginsDirsIt++;
+  }
+  pluginsIt = plugins.constEnd();
 }
 
 } // namespace QtNote
 
-#include "pluginmanager.moc"
+//#include "pluginmanager.moc"

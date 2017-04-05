@@ -20,16 +20,35 @@
 #ifndef QSTARDICT_PLUGINSVIEW_H
 #define QSTARDICT_PLUGINSVIEW_H
 
+#include <QStyledItemDelegate>
 #include <QTableView>
 
 namespace QStarDict {
 
-class PluginsView : public QTableView
-{
-    Q_OBJECT
+class ButtonDelegate : public QStyledItemDelegate {
+  Q_OBJECT
+
+  enum ButtonRoles { ButtonRole = Qt::UserRole + 1 };
+
+  QModelIndex sunken;
+
 public:
-    PluginsView(QWidget *parent = 0);
-    void configureColumns();
+  explicit ButtonDelegate(QObject *parent = 0);
+
+  // painting
+  void paint(QPainter *painter, const QStyleOptionViewItem &option,
+	     const QModelIndex &index) const;
+
+  bool editorEvent(QEvent *event, QAbstractItemModel *model,
+		   const QStyleOptionViewItem &option,
+		   const QModelIndex &index);
+};
+
+class PluginsView : public QTableView {
+  Q_OBJECT
+public:
+  PluginsView(QWidget *parent = 0);
+  void configureColumns();
 };
 
 } // namespace QStarDict
